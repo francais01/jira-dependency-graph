@@ -7,6 +7,8 @@ import getpass
 import sys
 import textwrap
 
+import pprint
+
 import requests
 import requests_cache
 from functools import reduce
@@ -15,6 +17,8 @@ GOOGLE_CHART_URL = 'https://chart.apis.google.com/chart'
 MAX_SUMMARY_LENGTH = 30
 
 cached_requests = requests_cache.CachedSession('jira_cache')
+
+pp = pprint.PrettyPrinter(indent=4, stream=sys.stderr)
 
 def log(*args):
     print(*args, file=sys.stderr)
@@ -45,7 +49,7 @@ class JiraSearch(object):
     def get_issue(self, key):
         """ Given an issue key (i.e. JRA-9) return the JSON representation of it. This is the only place where we deal
             with JIRA's REST API. """
-        log('Fetching ' + key)
+        #log('Fetching ' + key)
         # we need to expand subtasks and links since that's what we care about here.
         response = self.get('/issue/%s' % key, params={'fields': self.fields})
         response.raise_for_status()
@@ -85,6 +89,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
     def create_node_text(issue_key, fields, islink=True):
         summary = fields['summary']
         status = fields['status']
+        issuetype = fields['issuetype']
         assignee = ''
         if show_assignee and 'assignee' in fields and fields['assignee']:
             assignee = '<BR/><I>' + fields['assignee']['displayName'] + '</I>'
@@ -96,15 +101,25 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
         else:
             # truncate long labels with "...", but only if the three dots are replacing more than two characters
             # -- otherwise the truncated label would be taking more space than the original.
-            if len(summary) > MAX_SUMMARY_LENGTH + 2:
-                summary = fields['summary'][:MAX_SUMMARY_LENGTH] + '...'
+            if len(summary) > MAX_SUMMARY_LENGTH + 1:
+                summary = fields['summary'][:MAX_SUMMARY_LENGTH]
+                summary = summary.strip() + '…'
         summary = summary.replace('"', '\\"')
         # log('node ' + issue_key + ' status = ' + str(status))
 
-        if islink:
-            return '"{}\\n({})"'.format(issue_key, summary)
-        return '"{}\\n({}){}" [href="{}", fillcolor="{}", style=filled]'.format(issue_key, summary, assignee, jira.get_issue_uri(issue_key), get_status_color(status))
+        color = get_status_color(status)
+        if issuetype['name'] == "Functional Requirement":
+            color = "orange1"
+        if issuetype['name'] == "UI Requirement":
+            color = "deepskyblue"
 
+        if islink:
+            return '"{}"'.format(issue_key)
+        return '"{}" [label=<<FONT POINT-SIZE="10">{}</FONT><BR/>{}{}>, \
+            href="{}", fillcolor="{}", style=filled]'.format(issue_key, issue_key,
+                                                             summary, assignee,
+                                                             jira.get_issue_uri(issue_key),
+                                                             color)
 
     def process_link(fields, issue_key, link):
         if 'outwardIssue' in link:
@@ -140,7 +155,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
             return linked_issue_key, None
 
         arrow = ' => ' if direction == 'outward' else ' <= '
-        log(issue_key + arrow + link_type + arrow + linked_issue_key)
+        #log(issue_key + arrow + link_type + arrow + linked_issue_key)
 
         extra = ',color="red"' if link_type == "blocks" else ""
 
@@ -200,7 +215,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
             for other_link in fields['issuelinks']:
                 result = process_link(fields, issue_key, other_link)
                 if result is not None:
-                    log('Appending ' + result[0])
+                    #log('Appending ' + result[0])
                     children.append(result[0])
                     if result[1] is not None:
                         graph.append(result[1])
@@ -269,7 +284,14 @@ def filter_duplicates(lst):
     def append_unique(acc, item):
         return acc if acc[-1][1] == item[1] else acc.append(item) or acc
     srt_enum = sorted(enumerate(lst), key=lambda i_val: i_val[1])
-    return [item[1] for item in sorted(reduce(append_unique, srt_enum, [srt_enum[0]]))]
+    if len(srt_enum) < 1:
+        log('Found issue with lst or srt_enum')
+        pp.pprint(lst)
+        pp.pprint(srt_enum)
+        return srt_enum
+    reduced = reduce(append_unique, srt_enum, [srt_enum[0]])
+    srt_reduced = sorted(reduced)
+    return [item[1] for item in srt_reduced]
 
 
 def main():
