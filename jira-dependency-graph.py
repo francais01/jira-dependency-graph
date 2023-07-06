@@ -108,10 +108,10 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
         # log('node ' + issue_key + ' status = ' + str(status))
 
         color = get_status_color(status)
-        if issuetype['name'] == "Functional Requirement":
-            color = "orange1"
-        if issuetype['name'] == "UI Requirement":
+        if 'Requirement' in issuetype['name']:
             color = "deepskyblue"
+        elif issuetype['name'] == "Epic":
+            color = "mediumorchid"
 
         if islink:
             return '"{}"'.format(issue_key)
@@ -196,7 +196,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
                 for subtask in issues:
                     subtask_key = get_key(subtask)
                     log(subtask_key + ' => references epic => ' + issue_key)
-                    node = '{}->{}[color=orange]'.format(
+                    node = '{}->{}[color=mediumorchid]'.format(
                         create_node_text(issue_key, fields),
                         create_node_text(subtask_key, subtask['fields']))
                     graph.append(node)
